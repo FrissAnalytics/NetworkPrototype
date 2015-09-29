@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="description" content="">
+		<meta name="author" content="">
+		<link rel="icon" href="favicon.ico">
+		<title>Network viewer prototype</title>
+
+		<!-- jQuery -->
+		<script src="js/jquery.min.js"></script>
+
+		<!-- bootstrap  -->
+		<link href="dist/css/bootstrap.min.css" rel="stylesheet">
+		<link href="navbar-fixed-top.css" rel="stylesheet">
+		<script src="dist/js/bootstrap.min.js"></script>
+
+		<!-- jSON viewer, see /https://github.com/yesmeck/jquery-jsonview -->
+		<link rel="stylesheet" href="jquery.jsonview.css" />
+		<script src="jquery.jsonview.js"></script>
+
+		<!-- vis.js -->
+		<script type="text/javascript" src="vis.js"></script>
+		<link href="vis.css" rel="stylesheet" type="text/css" />
+
+		<!-- font awesome -->
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.4.0/css/font-awesome.min.css">
+		<link rel="stylesheet" href="ionicons.min.css">
+		
+		<!-- ion rangeslider -->
+		<link href="css/normalize.css" rel="stylesheet" type="text/css">
+		<link href="css/ion.rangeSlider.css" rel="stylesheet" type="text/css">
+		<link href="css/ion.rangeSlider.skinModern.css" rel="stylesheet" type="text/css">
+		<script src="js/ion.rangeSlider.min.js"></script>
+	</head>
+  
+	<style type="text/css">
+		.Friss input,button{
+			width:100%;
+			padding:2px;
+			margin:2px;
+		}
+
+		#mynetwork, #json{
+			height:700px;
+		}
+
+		#json{
+			overflow-y:scroll;
+			overflow-x:hidden;
+		}
+
+		.Border{
+			border: 1px solid lightgray;
+			padding: 20px;
+			min-height: 300px;
+		}
+	</style>
+
+  <body>
+
+    <nav class="navbar navbar-default navbar-fixed-top">
+      <div class="container">
+      <a class="navbar-brand" href="#">Network prototype</a>
+      </div>
+    </nav>
+
+    <div class="container">
+		<div class="row Friss">
+			<div class="col-md-3">
+				<input type="button" onclick="addNodeRandom()" value="add random node">
+				<input type="button" onclick="changeNode1()" value="change node 1's color">
+				<input type="button" onclick="removeRandomNode()" value="remove a random Node">
+				<input type="button" onclick="resetAllNodes()" value="reload all nodes">
+				<div id = "networkstatus"></div>
+			</div>
+			<div class="col-md-3">
+				<input type="button" onclick="resetAllNodesStabilize()" value="reload nodes and stabilize"> 
+				<input type="button" onclick="fitAnimated();" value="animated fit."> 
+				<input type="button" onclick="changeOptions()" value="change global options">
+				<input type="button" onclick="setTheData()" value="setData">
+				<form onsubmit="focusNode(); return false;">
+				    <label for="NodeIdFocus">Focus on node:</label>
+				    <input id="NodeIdFocus" type="text" value="1" style="width: 25px;">
+				    <input type="submit" value="go" style="width: 25px;">
+				</form>
+			</div>
+			<div class="col-md-3">
+				<input type="button" onclick="resetAll()" value="destroy network and restart">
+				<input type="button" onclick="focusRandom()" value="focus on node 3">
+				<input type="button" onclick="HideNode2()" value="hide node 2">
+				<input type="button" onclick="ShowNode2()" value="show node 2">
+				<form onsubmit="hideConnectedEdges(); return false;">
+				    <label for="NodeIdEdgeRemove">Remove edges from node:</label>
+				    <input id="NodeIdEdgeRemove" type="text" value="1" style="width: 25px;">
+				    <input type="submit" value="go" style="width: 25px;">
+				</form>
+
+			</div>
+			<div class="col-md-3">
+			  <input type="button" onclick="ShowPositions()" value="get node positions">
+			  <button id="collapse-btn">collapse</button>
+			  <button id="expand-btn">expand</button>	
+			  <input type="button" onclick="clusterByCid()" value="Cluster all nodes with CID = 1">
+			  <input type="button" onclick="clusterByConnection()" value="Cluster 'node 1' by connections"> <br />
+			  
+			</div>			
+		</div>
+		</br>
+
+		<input type="text" id="slider" name="example_name" value="" />
+
+		</br>
+		<div class="row">
+			<div class="col-md-10">
+				<div id="mynetwork" class = "Border"></div>
+			</div>
+			<div class="col-md-2">
+				<div id="json" class = "Border"></div>
+			</div>			
+		</div>
+		</br>
+		<script type="text/javascript">
+
+
+			$("#slider").ionRangeSlider({
+			    grid:true,
+			    min: 1,
+			    max: 10,
+			    step:1,
+			    values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+			    prefix: "time",
+			});
+
+			// listen to value of slider 
+			$("#slider").on("change",function(){
+				
+				// current value slider
+				var value = parseInt($(this).prop("value"));
+
+				// determine nodes that are smaller
+				var n   = nodeIds.length;
+
+				for(i = 0; i < n; i++){
+
+					var id = parseInt(nodeIds[i]);
+
+					if( id >= value){
+						nodes.update([{id: id, hidden:false}]);
+					} else {
+						nodes.update([{id: id, hidden:true}]);
+					}
+				}
+
+			})
+
+			var nodeIds, shadowState, nodesArray, nodes, edgesArray, edges, network;
+
+			var options = {
+				offset: {x: "10px",y: "10px"},
+				duration: 1000,
+				easingFunction: "easeInOutQuad",
+				scale: 1
+			};
+			
+			function startNetwork() {
+
+				// this list is kept to remove a random node.
+				nodeIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+				shadowState = false;
+
+				// create an array with nodes with FontAwesome based icons
+				nodesArray = [
+					{id: 1 , label: 'node 1', shape: 'icon', icon: { face: 'FontAwesome', code: '\uf1ad', size: 25, color: '#f0a30a'}},
+					{id: 2 , cid:1, label: 'node 2', shape: 'icon', icon: { face: 'FontAwesome', code: '\uf1ad', size: 25, color: 'blue'}},
+					{id: 3 , label: 'node 3', shape: 'icon', icon: { face: 'FontAwesome', code: '\uf1ad', size: 25, color: 'red'}},
+					{id: 4 , cid:1, label: 'node 4', shape: 'icon', icon: { face: 'FontAwesome', code: '\uf007', size: 25, color: '#57169a'}},
+					{id: 5 , cid:1, label: 'node 5', shape: 'icon', icon: { face: 'FontAwesome', code: '\uf007', size: 25, color: '#57169a'}},
+					{id: 6 , label: 'node 6',  shape: 'icon', icon: { face: 'FontAwesome', code: '\uf1b9', size: 15, color: '#1b926'}},
+					{id: 7 , label: 'node 7',  shape: 'icon', icon: { face: 'FontAwesome', code: '\uf1b9', size: 15, color: '#1b926'}},
+					{id: 8 , label: 'node 8',  shape: 'icon', icon: { face: 'FontAwesome', code: '\uf1b9', size: 15, color: '#1b926'}},
+					{id: 9 , label: 'node 9',  shape: 'icon', icon: { face: 'FontAwesome', code: '\uf1b9', size: 15, color: '#1b926'}},
+					{id: 10, label: 'node 10',  shape: 'icon', icon: { face: 'FontAwesome', code: '\uf1b9', size: 15, color: '#1b926'}}
+				];
+				
+				nodes = new vis.DataSet(nodesArray);
+
+				// create an array with edges
+				edgesArray = [
+					{from: 1, to: 3 , label:'e1-v1.v3' , id: 1,  color: 'gray', dashes: true},
+					{from: 1, to: 2 , label:'e2-v1.v2' , id: 2,  color: 'gray', dashes: true},
+					{from: 2, to: 4 , label:'e3-v2.v4' , id: 3}, 
+					{from: 2, to: 5 , label:'e4-v2.v5' , id: 4},    
+					{from: 3, to: 6 , label:'e5-v3.v6' , id: 6,  color: 'green', dashes: true},
+					{from: 3, to: 7 , label:'e6-v3.v7' , id: 7,  color: 'green', dashes: true},
+					{from: 3, to: 8 , label:'e7-v3.v8' , id: 8,  color: 'green', dashes: true},
+					{from: 3, to: 9 , label:'e8-v3.v9' , id: 9,  color: 'green', dashes: true},
+					{from: 3, to: 10, label:'e9-v3.v10', id: 10, color: 'green', dashes: true}
+					
+				];
+				
+				edges = new vis.DataSet(edgesArray);
+				
+				// combine into data object
+				data = {
+					 nodes: nodes,
+					 edges: edges
+				};
+				
+				// main container elements used to render network and physics controls    
+				var container = document.getElementById('mynetwork');
+				
+				// network options
+				var NetworkStartoptions = {
+					physics: {stabilization: false},
+					interaction: { navigationButtons: true, keyboard: true},
+					
+					//don't show physic controls
+					configure: { enabled: false},
+					layout:{randomSeed:2}
+			   };
+				
+				// create actual network
+				network = new vis.Network(container, data, NetworkStartoptions);
+				
+				// show on which node we clicked
+				network.on('click', function (properties) {
+					  selection = properties.nodes;
+					  if (selection > 0) {
+							$("#json").JSONView(selection);
+					  }
+				});
+				
+				network.on("selectNode", function(params) {
+					if (params.nodes.length == 1) {
+						if (network.isCluster(params.nodes[0]) == true) {
+							network.openCluster(params.nodes[0]);
+						}
+					}
+				})
+
+				// indicate when network starts 
+				network.on("startStabilizing", function() {
+					$("#networkstatus").html("start stabilizing network");
+					$("#networkstatus").css("color","red");
+				})
+
+				// indicate when network layout has been stabilized
+				network.on("stabilized", function() {
+					$("#networkstatus").html("network stabilized");
+					$("#networkstatus").css("color","green");
+				})
+			}
+
+			// cluster 1
+			function clusterByCid() {
+			
+				network.setData(data);
+				
+				var clusterOptionsByData = {
+					joinCondition:function(childOptions) {
+						return childOptions.cid == 1;
+					},
+					clusterNodeProperties: {id:'cidCluster', borderWidth:3, shape:'database'}
+				}
+				network.cluster(clusterOptionsByData);
+			}
+			
+			// cluster 2
+			function clusterByConnection() {
+			  network.setData(data);
+			  network.clusterByConnection(3)
+			}
+			
+			// json viewer to inspect node positions
+			function ShowPositions(){
+				var Positions = network.getPositions();
+				$("#json").JSONView(Positions);
+			}
+
+			$('#collapse-btn').on('click', function() {
+				$('#json').JSONView('collapse');
+			});
+
+			$('#expand-btn').on('click', function() {
+				$('#json').JSONView('expand');
+			});
+
+			// helper functions
+			function addNodeRandom() {
+				var newId = (Math.random() * 1e7).toString(32);
+				nodes.add({id:newId, label:"I'm new!", shape: 'icon', icon: { face: 'FontAwesome', code: '\uf1ad', size: 25, color: 'red'}}); 
+				nodeIds.push(newId);
+			}
+			
+			function changeNode1() {
+				var newColor = '#' + Math.floor((Math.random() * 255 * 255 * 255)).toString(16);
+				nodes.update([{id: 1 , label: 'node 1', shape: 'icon', icon: { face: 'FontAwesome', code: '\uf1ad', size: 25, color: newColor}}]);
+			}
+			
+										
+			function HideNode2() {
+				nodes.update([{id:2, hidden:true}]);
+			}
+			
+			function ShowNode2() {
+				nodes.update([{id:2, hidden:false}]);
+			}
+
+			function removeRandomNode() {
+				var randomNodeId = nodeIds[Math.floor(Math.random() * nodeIds.length)];
+				nodes.remove({id:randomNodeId});
+
+				var index = nodeIds.indexOf(randomNodeId);
+				nodeIds.splice(index,1);
+			}
+
+			function changeOptions() {
+				shadowState = !shadowState;
+				network.setOptions({nodes:{shadow:shadowState},edges:{shadow:shadowState}});
+			}
+			
+			function resetAllNodes() {
+				nodes.clear();
+				edges.clear();
+				nodes.add(nodesArray);
+				edges.add(edgesArray);
+			}
+
+			function resetAllNodesStabilize() {
+				resetAllNodes();
+				network.stabilize();
+			}
+
+			function setTheData() {
+				nodes = new vis.DataSet(nodesArray);
+				edges = new vis.DataSet(edgesArray);
+				network.setData({nodes:nodes, edges:edges})
+			}
+
+			function resetAll() {
+				if (network !== null) {
+					network.destroy();
+					network = null;
+				}
+				startNetwork();
+			}
+			
+			function fitAnimated() {
+			  network.fit({animation:options});
+			}
+			
+			function focusNode(){
+			  
+			  var options = {
+				scale: 2,
+				animation: {
+				  duration: 1500,
+				  easingFunction: "easeInOutQuad"
+				}
+			  };
+
+			  var NodeId = document.getElementById('NodeIdFocus').value;
+
+			  network.focus(NodeId,options);
+			}
+
+
+			// hide all edges incident to a node
+			function hideConnectedEdges(){
+				
+				var NodeId = document.getElementById('NodeIdEdgeRemove').value;
+
+				var EdgeIds = network.getConnectedEdges(NodeId);
+
+				console.log('getConnectedEdges');
+				console.log(EdgeIds);
+
+				var NrOfEdges = EdgeIds.length; 
+
+				if(NrOfEdges > 0){
+					for(i=0; i < NrOfEdges; i++){
+						var Id = EdgeIds[i];
+						edges.update([{id: Id, hidden:true}]);
+					}
+				}
+			}
+
+			startNetwork();
+
+		</script>
+		
+    </div> <!-- /container -->
+
+  </body>
+</html>
